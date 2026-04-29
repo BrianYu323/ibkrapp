@@ -1,0 +1,23 @@
+{
+  "skill_name": "ibkr-chart-architecture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm building a trading dashboard in Python with TWS API and Tkinter. Can you give me the basic connection boilerplate where the API loop runs in a background thread and sends data back to my UI via a queue?",
+      "expected_output": "A Python script showing the architecture of subclassing EWrapper/EClient, setting up a background thread for the API loop, and using queue.Queue for cross-thread data passing.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Write the setup for connecting an EWrapper/EClient to Interactive Brokers on port 7497. I need a thread-safe way to print out error messages from IBKR without freezing my main program.",
+      "expected_output": "A setup that overrides the `error` callback in EWrapper, places the error messages into a queue, and processes them on the main thread.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I want to start a connection to IBKR API using paper trading, and have a while loop on my main thread that can read from the data queue safely.",
+      "expected_output": "The bootstrapping code inside `if __name__ == '__main__':` that initializes the client, starts the API daemon thread, and continuously consumes the `data_queue`.",
+      "files": []
+    }
+  ]
+}

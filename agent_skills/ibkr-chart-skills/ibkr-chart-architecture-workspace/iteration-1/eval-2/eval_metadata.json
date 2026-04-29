@@ -1,0 +1,1 @@
+{"eval_id": 2, "eval_name": "main-loop-read", "prompt": "I want to start a connection to IBKR API using paper trading, and have a while loop on my main thread that can read from the data queue safely.", "assertions": ["Correctly implemented requirements"]}

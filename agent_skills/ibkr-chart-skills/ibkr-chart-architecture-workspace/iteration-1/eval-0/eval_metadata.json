@@ -1,0 +1,1 @@
+{"eval_id": 0, "eval_name": "tkinter-boilerplate", "prompt": "I'm building a trading dashboard in Python with TWS API and Tkinter. Can you give me the basic connection boilerplate where the API loop runs in a background thread and sends data back to my UI via a queue?", "assertions": ["Correctly implemented requirements"]}

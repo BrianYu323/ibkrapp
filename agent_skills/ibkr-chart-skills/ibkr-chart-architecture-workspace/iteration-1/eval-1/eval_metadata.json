@@ -1,0 +1,1 @@
+{"eval_id": 1, "eval_name": "thread-safe-error", "prompt": "Write the setup for connecting an EWrapper/EClient to Interactive Brokers on port 7497. I need a thread-safe way to print out error messages from IBKR without freezing my main program.", "assertions": ["Correctly implemented requirements"]}
