@@ -1,11 +1,16 @@
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import asyncio
 import sys
 import json
 import os
+import math
+import random
+from datetime import datetime, timedelta
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -14,6 +19,98 @@ if sys.platform == 'win32':
 ib = None
 ib_connected = False
 ib_account_id = ""
+demo_mode = False
+
+# --- Built-in Demo / Mock State (used when IBKR TWS is not running) ---
+DEMO_BASE_PRICES = {
+    "AAPL":   (228.50, "STK",     "SMART", "AAPL"),
+    "HSBC":   (46.80,  "STK",     "SMART", "HSBC"),
+    "TSLA":   (254.20, "STK",     "SMART", "TSLA"),
+    "NVDA":   (138.60, "STK",     "SMART", "NVDA"),
+    "GC1!":   (2745.30, "CONTFUT", "COMEX", "GCZ6"),
+    "SI1!":   (33.85,  "CONTFUT", "COMEX", "SIZ6"),
+    "CL1!":   (71.40,  "CONTFUT", "NYMEX", "CLZ6"),
+    "MCL1!":  (71.40,  "CONTFUT", "NYMEX", "MCLZ6"),
+    "NQ0626": (20450.0, "FUT",    "CME",   "NQM6"),
+}
+
+demo_positions = [
+    {"symbol": "AAPL", "secType": "STK", "exchange": "SMART", "currency": "USD", "quantity": 50.0, "avgCost": 215.40, "marketValue": 11425.00},
+    {"symbol": "NVDA", "secType": "STK", "exchange": "SMART", "currency": "USD", "quantity": 100.0, "avgCost": 124.00, "marketValue": 13860.00},
+    {"symbol": "GC1!", "secType": "CONTFUT", "exchange": "COMEX", "currency": "USD", "quantity": 2.0, "avgCost": 2690.00, "marketValue": 5490.60},
+]
+
+demo_orders = [
+    {
+        "orderId": 1001,
+        "symbol": "AAPL",
+        "localSymbol": "AAPL",
+        "secType": "STK",
+        "action": "BUY",
+        "orderType": "LMT",
+        "quantity": 25.0,
+        "limitPrice": 220.00,
+        "stopPrice": None,
+        "status": "Submitted",
+        "filled": 0.0,
+        "remaining": 25.0,
+        "avgFillPrice": 0.0,
+        "lastUpdate": (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "tif": "GTC",
+    }
+]
+
+demo_order_history = [
+    {
+        "orderId": 1000,
+        "symbol": "NVDA",
+        "localSymbol": "NVDA",
+        "secType": "STK",
+        "action": "BUY",
+        "orderType": "MKT",
+        "quantity": 100.0,
+        "limitPrice": None,
+        "stopPrice": None,
+        "status": "Filled",
+        "filled": 100.0,
+        "remaining": 0.0,
+        "avgFillPrice": 124.00,
+        "lastUpdate": (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "tif": "DAY",
+    },
+    *demo_orders,
+]
+demo_next_order_id = 1002
+
+
+def generate_demo_bars(symbol: str, timeframe: str = "1h", count: int = 120):
+    sym = symbol.upper()
+    base_price, _, _, _ = DEMO_BASE_PRICES.get(sym, (150.0, "STK", "SMART", sym))
+    tf_mins = {"15m": 15, "1h": 60, "2h": 120, "4h": 240}.get(timeframe, 60)
+    rng = random.Random(hash(f"{sym}_{timeframe}"))
+    volatility = base_price * 0.006
+    curr_close = base_price * (0.94 + rng.random() * 0.08)
+    now = datetime.now().replace(second=0, microsecond=0)
+    bars = []
+    for i in range(count, -1, -1):
+        t = now - timedelta(minutes=i * tf_mins)
+        open_p = curr_close
+        delta = (rng.random() - 0.485) * volatility
+        close_p = max(0.5, open_p + delta)
+        high_p = max(open_p, close_p) + rng.random() * volatility * 0.65
+        low_p = max(0.1, min(open_p, close_p) - rng.random() * volatility * 0.65)
+        vol = int(1500 + rng.random() * 25000)
+        bars.append({
+            "date": t.strftime("%Y-%m-%d %H:%M:%S"),
+            "open": round(open_p, 2),
+            "high": round(high_p, 2),
+            "low": round(low_p, 2),
+            "close": round(close_p, 2),
+            "volume": vol,
+        })
+        curr_close = close_p
+    return bars
+
 
 ACCOUNT_TAGS = {
     "NetLiquidation", "TotalCashValue", "UnrealizedPnL",
@@ -23,22 +120,24 @@ ACCOUNT_TAGS = {
 
 async def connect_to_ibkr():
     """Connect to IBKR TWS and subscribe to account updates."""
-    global ib, ib_connected, ib_account_id
+    global ib, ib_connected, ib_account_id, demo_mode
 
     # Set the event loop so eventkit can find it
     loop = asyncio.get_running_loop()
     asyncio.set_event_loop(loop)
 
-    from ib_insync import IB
-
-    ib = IB()
     try:
+        from ib_insync import IB
+        ib = IB()
         await ib.connectAsync("127.0.0.1", 7497, clientId=1)
         ib_connected = True
+        demo_mode = False
         print("✅ Connected to IBKR TWS on port 7497.")
     except Exception as e:
         ib_connected = False
-        print(f"❌ Failed to connect to IBKR: {e}")
+        demo_mode = True
+        ib_account_id = "DU999999 (Demo)"
+        print(f"⚠️ IBKR TWS not reachable ({e}) -> Switched to Built-in DEMO MODE.")
         return
 
     # Subscribe to account updates (separate try so connection stays valid)
@@ -89,14 +188,49 @@ app.add_middleware(
 )
 
 
+@app.get("/api/status")
+def read_status():
+    return {
+        "status": "ok",
+        "connected": ib_connected or demo_mode,
+        "mode": "demo" if demo_mode else "live",
+        "account": ib_account_id,
+    }
+
+
 @app.get("/")
 def read_root():
-    return {"status": "ok", "connected": ib_connected, "account": ib_account_id}
+    # If static frontend build exists, serve the web app directly on port 8000
+    dist_index = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "index.html")
+    if os.path.exists(dist_index):
+        return FileResponse(dist_index)
+    return {
+        "status": "ok",
+        "connected": ib_connected or demo_mode,
+        "mode": "demo" if demo_mode else "live",
+        "account": ib_account_id,
+    }
 
 
 @app.get("/api/portfolio")
 async def get_portfolio():
     """Get account summary and portfolio positions from cache."""
+    if demo_mode:
+        gross = sum(abs(p["marketValue"]) for p in demo_positions)
+        cash = 85420.50
+        return {
+            "mode": "demo",
+            "positions": demo_positions,
+            "account": {
+                "NetLiquidation": f"{cash + gross:.2f}",
+                "BuyingPower": f"{(cash + gross) * 4:.2f}",
+                "TotalCashValue": f"{cash:.2f}",
+                "GrossPositionValue": f"{gross:.2f}",
+                "UnrealizedPnL": "2145.60",
+                "RealizedPnL": "840.00",
+            },
+        }
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR", "positions": [], "account": {}}
 
@@ -129,6 +263,9 @@ async def get_portfolio():
 @app.get("/api/orders")
 async def get_orders():
     """Get all open orders."""
+    if demo_mode:
+        return {"orders": demo_orders, "mode": "demo"}
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR", "orders": []}
 
@@ -157,6 +294,10 @@ async def get_orders():
 @app.get("/api/order-history")
 async def get_order_history():
     """Get all trades from the current session (including filled, cancelled, inactive)."""
+    if demo_mode:
+        sorted_hist = sorted(demo_order_history, key=lambda x: x["orderId"], reverse=True)
+        return {"orders": sorted_hist, "mode": "demo"}
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR", "orders": []}
 
@@ -214,6 +355,10 @@ FUTURES_MAP = {
 @app.get("/api/bars")
 async def get_bars(symbol: str = "AAPL", timeframe: str = "1h"):
     """Get historical bar (candlestick) data from IBKR."""
+    if demo_mode:
+        bars = generate_demo_bars(symbol, timeframe)
+        return {"symbol": symbol, "timeframe": timeframe, "bars": bars, "mode": "demo"}
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR", "bars": []}
 
@@ -306,6 +451,22 @@ def resolve_contract(symbol: str):
 @app.get("/api/resolve")
 async def resolve_symbol(symbol: str):
     """Resolve a symbol and return contract details + current market price."""
+    if demo_mode:
+        sym = symbol.strip().upper()
+        base_price, sec_type, exch, local_sym = DEMO_BASE_PRICES.get(sym, (150.0, "STK", "SMART", sym))
+        return {
+            "found": True,
+            "symbol": sym.replace("1!", ""),
+            "secType": sec_type,
+            "exchange": exch,
+            "currency": "USD",
+            "conId": abs(hash(sym)) % 900000 + 100000,
+            "localSymbol": local_sym,
+            "multiplier": "100" if "FUT" in sec_type else "1",
+            "lastTradeDateOrContractMonth": "",
+            "mode": "demo",
+        }
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR"}
 
@@ -337,6 +498,21 @@ _mktdata_failed_symbols: set = set()
 @app.get("/api/market-price")
 async def get_market_price(symbol: str):
     """Get current market price for a symbol."""
+    if demo_mode:
+        bars = generate_demo_bars(symbol, "15m", count=5)
+        last_p = bars[-1]["close"]
+        mp = round(last_p + (random.random() - 0.5) * last_p * 0.001, 2)
+        return {
+            "symbol": symbol,
+            "bid": round(mp - 0.05, 2),
+            "ask": round(mp + 0.05, 2),
+            "last": mp,
+            "close": bars[-2]["close"],
+            "marketPrice": mp,
+            "source": "demo",
+            "mode": "demo",
+        }
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR"}
 
@@ -427,6 +603,71 @@ async def get_market_price(symbol: str):
 @app.post("/api/order")
 async def place_order(order_data: dict = {}):
     """Place an order through IBKR."""
+    global demo_next_order_id
+    if demo_mode:
+        symbol = (order_data.get("symbol") or "AAPL").upper()
+        action = order_data.get("action", "BUY")
+        quantity = float(order_data.get("quantity", 1))
+        order_type = order_data.get("orderType", "MKT")
+        limit_price = order_data.get("limitPrice")
+        stop_price = order_data.get("stopPrice")
+        tif = order_data.get("tif", "DAY")
+
+        bars = generate_demo_bars(symbol, "15m", count=5)
+        fill_price = float(limit_price) if limit_price else bars[-1]["close"]
+        is_mkt = order_type == "MKT"
+        _, sec_type, _, local_sym = DEMO_BASE_PRICES.get(symbol, (150.0, "STK", "SMART", symbol))
+
+        new_order = {
+            "orderId": demo_next_order_id,
+            "symbol": symbol,
+            "localSymbol": local_sym,
+            "secType": sec_type,
+            "action": action,
+            "orderType": order_type,
+            "quantity": quantity,
+            "limitPrice": float(limit_price) if limit_price else None,
+            "stopPrice": float(stop_price) if stop_price else None,
+            "status": "Filled" if is_mkt else "Submitted",
+            "filled": quantity if is_mkt else 0.0,
+            "remaining": 0.0 if is_mkt else quantity,
+            "avgFillPrice": fill_price if is_mkt else 0.0,
+            "lastUpdate": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "tif": tif,
+        }
+        demo_next_order_id += 1
+
+        if not is_mkt:
+            demo_orders.insert(0, new_order)
+        else:
+            signed_qty = quantity if action == "BUY" else -quantity
+            existing = next((p for p in demo_positions if p["symbol"] == symbol), None)
+            if existing:
+                existing["quantity"] += signed_qty
+                existing["marketValue"] = round(existing["quantity"] * fill_price, 2)
+            else:
+                demo_positions.append({
+                    "symbol": symbol,
+                    "secType": sec_type,
+                    "exchange": "SMART",
+                    "currency": "USD",
+                    "quantity": signed_qty,
+                    "avgCost": fill_price,
+                    "marketValue": round(signed_qty * fill_price, 2),
+                })
+
+        demo_order_history.insert(0, new_order)
+        return {
+            "success": True,
+            "orderId": new_order["orderId"],
+            "status": new_order["status"],
+            "symbol": symbol,
+            "action": action,
+            "quantity": quantity,
+            "orderType": order_type,
+            "mode": "demo",
+        }
+
     if not ib or not ib_connected:
         return {"error": "Not connected to IBKR"}
 
@@ -616,3 +857,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "pong"}))
     except Exception:
         pass
+
+
+# Serve static frontend build if `frontend/dist` exists (for single-port & tunnel demos)
+FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+if os.path.isdir(FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+

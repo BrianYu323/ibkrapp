@@ -1,0 +1,18 @@
+{
+  "name": "IBKR Trading Pro (Demo)",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "postCreateCommand": "cd backend && pip install -r requirements.txt && cd ../frontend && npm install && npx expo export --platform web",
+  "postAttachCommand": "cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+  "forwardPorts": [8000, 8081],
+  "portsAttributes": {
+    "8000": {
+      "label": "IBKR Trading App (Unified Web + API)",
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
+    },
+    "8081": {
+      "label": "Expo Web Dev Server",
+      "onAutoForward": "notify"
+    }
+  }
+}

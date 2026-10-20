@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
-import { useStore } from '@/store/useStore';
-
-const API_BASE = 'http://localhost:8000';
+import { useStore, fetchOrders, fetchPortfolio } from '@/store/useStore';
+import { apiFetch } from '@/constants/config';
 
 interface Bar {
   date: string;
@@ -94,7 +93,7 @@ export function useBotEngine(symbol: string, bars: Bar[]) {
           
           if (botAutoSubmit) {
             // Auto-submit order silently
-            await fetch(`${API_BASE}/api/place-order`, {
+            await apiFetch('/api/order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -104,6 +103,8 @@ export function useBotEngine(symbol: string, bars: Bar[]) {
                 orderType: 'MKT'
               })
             });
+            fetchOrders();
+            fetchPortfolio();
             // Show toast or alert to notify user
             Alert.alert('🤖 Bot Executed', `[${bot.name}] Automatically submitted ${decision.action} ${decision.quantity} ${symbol} at MKT`);
           } else {
@@ -117,7 +118,7 @@ export function useBotEngine(symbol: string, bars: Bar[]) {
                   text: "Submit", 
                   style: "default",
                   onPress: async () => {
-                    await fetch(`${API_BASE}/api/place-order`, {
+                    await apiFetch('/api/order', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -127,6 +128,8 @@ export function useBotEngine(symbol: string, bars: Bar[]) {
                         orderType: 'MKT'
                       })
                     });
+                    fetchOrders();
+                    fetchPortfolio();
                   }
                 }
               ]

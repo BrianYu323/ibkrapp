@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, TextInput, Switch, Modal, Alert } from 'react-native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useStore } from '@/store/useStore';
-
-const API_BASE = 'http://localhost:8000';
+import { apiFetch } from '@/constants/config';
 
 interface BotScript {
   name: string;
@@ -117,8 +116,7 @@ export default function BotScreen() {
 
   const fetchCustomBots = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/scripts/bots`);
-      const data = await res.json();
+      const data = await apiFetch('/api/scripts/bots');
       if (data.scripts) {
         setCustomBots(data.scripts);
       }
@@ -137,7 +135,7 @@ export default function BotScreen() {
       return;
     }
     try {
-      await fetch(`${API_BASE}/api/scripts/bots`, {
+      await apiFetch('/api/scripts/bots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: scriptName.trim(), code: scriptCode })
@@ -152,7 +150,7 @@ export default function BotScreen() {
 
   const deleteCustomBot = async (name: string) => {
     try {
-      await fetch(`${API_BASE}/api/scripts/bots/${encodeURIComponent(name)}`, {
+      await apiFetch(`/api/scripts/bots/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       });
       setActiveBots(prev => prev.filter(id => id !== `custom_${name}`));

@@ -11,6 +11,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useStore, fetchPortfolio, fetchOrders } from '../../store/useStore';
+import { apiFetch } from '../../constants/config';
 import ChartModal from '../../components/ChartModal';
 import OrderEntry from '../../components/OrderEntry';
 
@@ -167,8 +168,7 @@ function OrdersList() {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/order-history');
-      const data = await res.json();
+      const data = await apiFetch('/api/order-history');
       setHistory(data.orders || []);
     } catch (e) {
       console.error('Failed to fetch order history:', e);
@@ -303,6 +303,7 @@ function OrdersList() {
 // ─── Main Screen ───
 export default function TabOneScreen() {
   const isConnected = useStore((s) => s.isConnected);
+  const isDemoMode = useStore((s) => s.isDemoMode);
   const isLoading = useStore((s) => s.isLoading);
 
   // Chart modal state
@@ -335,8 +336,10 @@ export default function TabOneScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>IBKR Trading Pro</Text>
         <View style={styles.headerRight}>
-          <View style={[styles.statusDot, { backgroundColor: isConnected ? '#00ff78' : '#ff4d4d' }]} />
-          <Text style={styles.statusText}>{isConnected ? 'Connected' : 'Disconnected'}</Text>
+          <View style={[styles.statusDot, { backgroundColor: isConnected ? (isDemoMode ? '#f59e0b' : '#00ff78') : '#ff4d4d' }]} />
+          <Text style={styles.statusText}>
+            {isConnected ? (isDemoMode ? 'Demo Mode' : 'Connected') : 'Disconnected'}
+          </Text>
         </View>
       </View>
 

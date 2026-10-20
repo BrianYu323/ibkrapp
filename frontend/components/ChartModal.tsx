@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { AVAILABLE_INDICATORS } from '../utils/indicators';
 import { useBotEngine } from '../hooks/useBotEngine';
+import { apiFetch } from '../constants/config';
 
-const API_BASE = 'http://127.0.0.1:8000';
 const TIMEFRAMES = ['15m', '1h', '2h', '4h'];
 
 interface Bar {
@@ -50,8 +50,7 @@ export default function ChartModal({ visible, symbol, onClose }: ChartModalProps
 
   const fetchCustomScripts = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/scripts/indicators`);
-      const data = await res.json();
+      const data = await apiFetch('/api/scripts/indicators');
       if (data.scripts) setCustomScripts(data.scripts);
     } catch (e) {
       console.error('Failed to fetch scripts', e);
@@ -68,7 +67,7 @@ export default function ChartModal({ visible, symbol, onClose }: ChartModalProps
       return;
     }
     try {
-      await fetch(`${API_BASE}/api/scripts/indicators`, {
+      await apiFetch('/api/scripts/indicators', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: scriptName.trim(), code: scriptCode })
@@ -83,7 +82,7 @@ export default function ChartModal({ visible, symbol, onClose }: ChartModalProps
 
   const deleteCustomScript = async (name: string) => {
     try {
-      await fetch(`${API_BASE}/api/scripts/indicators/${encodeURIComponent(name)}`, {
+      await apiFetch(`/api/scripts/indicators/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       });
       setActiveIndicators(prev => prev.filter(id => id !== `custom_${name}`));
@@ -104,10 +103,9 @@ export default function ChartModal({ visible, symbol, onClose }: ChartModalProps
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(
-        `${API_BASE}/api/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}`
+      const data = await apiFetch(
+        `/api/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}`
       );
-      const data = await res.json();
       if (data.error) {
         setError(data.error);
         setBars([]);

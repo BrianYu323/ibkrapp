@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '../constants/config';
 
 export interface Position {
   symbol: string;
@@ -27,7 +28,9 @@ export interface Order {
 interface AppState {
   // Connection
   isConnected: boolean;
+  isDemoMode: boolean;
   setConnected: (status: boolean) => void;
+  setDemoMode: (isDemo: boolean) => void;
 
   // Portfolio
   positions: Position[];
@@ -49,11 +52,11 @@ interface AppState {
   setRunningBots: (bots: {id: string, name: string, code: string}[]) => void;
 }
 
-const API_BASE = 'http://127.0.0.1:8000';
-
 export const useStore = create<AppState>((set) => ({
   isConnected: false,
+  isDemoMode: false,
   setConnected: (status) => set({ isConnected: status }),
+  setDemoMode: (isDemo) => set({ isDemoMode: isDemo }),
 
   positions: [],
   account: {},
@@ -73,17 +76,17 @@ export const useStore = create<AppState>((set) => ({
 
 // Plain async functions (NOT hooks) to fetch data
 export async function fetchPortfolio() {
-  const { setPortfolio, setLoading, setConnected } = useStore.getState();
+  const { setPortfolio, setLoading, setConnected, setDemoMode } = useStore.getState();
   setLoading(true);
   try {
-    // First check if backend is connected to IBKR
-    const statusRes = await fetch(`${API_BASE}/`);
-    const statusData = await statusRes.json();
-    setConnected(statusData.connected === true);
+    // First check if backend is connected to IBKR (or running in demo mode)
+    const statusData = await apiFetch('/api/status');
+    const isDemo = statusData.mode === 'demo';
+    setDemoMode(isDemo);
+    setConnected(statusData.connected === true || isDemo);
 
     // Then fetch portfolio data
-    const res = await fetch(`${API_BASE}/api/portfolio`);
-    const data = await res.json();
+    const data = await apiFetch('/api/portfolio');
     setPortfolio(data.positions || [], data.account || {});
   } catch (e) {
     console.error('Failed to fetch portfolio:', e);
@@ -96,8 +99,7 @@ export async function fetchPortfolio() {
 export async function fetchOrders() {
   const { setOrders } = useStore.getState();
   try {
-    const res = await fetch(`${API_BASE}/api/orders`);
-    const data = await res.json();
+    const data = await apiFetch('/api/orders');
     setOrders(data.orders || []);
   } catch (e) {
     console.error('Failed to fetch orders:', e);

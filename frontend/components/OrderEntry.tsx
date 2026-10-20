@@ -9,8 +9,7 @@ import {
   Modal,
 } from 'react-native';
 import { useStore, fetchOrders, fetchPortfolio } from '../store/useStore';
-
-const API_BASE = 'http://127.0.0.1:8000';
+import { apiFetch } from '../constants/config';
 
 export default function OrderEntry() {
   const isConnected = useStore((s) => s.isConnected);
@@ -51,8 +50,7 @@ export default function OrderEntry() {
 
   const fetchPrice = async (sym: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/market-price?symbol=${encodeURIComponent(sym)}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/market-price?symbol=${encodeURIComponent(sym)}`);
       if (data && data.marketPrice) {
         setMarketPrice(data.marketPrice);
       }
@@ -70,8 +68,7 @@ export default function OrderEntry() {
     setDisplaySymbol('');
     setMarketPrice(null);
     try {
-      const res = await fetch(`${API_BASE}/api/resolve?symbol=${encodeURIComponent(s)}`);
-      const data = await res.json();
+      const data = await apiFetch(`/api/resolve?symbol=${encodeURIComponent(s)}`);
       if (data.found) {
         setRequestSymbol(s);
         setDisplaySymbol(data.symbol);
@@ -127,12 +124,11 @@ export default function OrderEntry() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/order`, {
+      const data = await apiFetch('/api/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData),
       });
-      const data = await res.json();
       if (data.success) {
         // Reset the form basically after success
         setQuantity('1');
